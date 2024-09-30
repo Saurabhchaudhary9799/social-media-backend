@@ -27,13 +27,13 @@ jobs:
       - name: Delete old container
         run: docker rm -f social-media-backend-container
       - name: Run Docker Container
-        run: docker run -d -p 8000:8000 --name social-media-backend-container \
-          -e NODE_ENV=production \
-          -e PORT=8000 \
-          -e DATABASE_URI='${{ secrets.DATABASE_URI }}' \
-          -e EXPIRES_IN='90d' \
-          -e SECRET='${{ secrets.SECRET }}' \
-          -e CLOUDINARY_CLOUD_NAME='${{ secrets.CLOUDINARY_CLOUD_NAME }}' \
-          -e CLOUDINARY_API_KEY='${{ secrets.CLOUDINARY_API_KEY }}' \
-          -e CLOUDINARY_API_SECRET='${{ secrets.CLOUDINARY_API_SECRET }}' \
+        run: docker run -d -p 8000:8000 --name social-media-backend-container 
+          -e NODE_ENV=production 
+          -e PORT=8000 
+          -e DATABASE_URI='${{ secrets.DATABASE_URI }}' 
+          -e EXPIRES_IN='90d' 
+          -e SECRET='${{ secrets.SECRET }}' 
+          -e CLOUDINARY_CLOUD_NAME='${{ secrets.CLOUDINARY_CLOUD_NAME }}' 
+          -e CLOUDINARY_API_KEY='${{ secrets.CLOUDINARY_API_KEY }}' 
+          -e CLOUDINARY_API_SECRET='${{ secrets.CLOUDINARY_API_SECRET }}' 
           ${{ secrets.DOCKER_USERNAME }}/social-media-backend
