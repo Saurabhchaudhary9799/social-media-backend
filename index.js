@@ -54,7 +54,7 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: "https://sky-social.vercel.app",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST"],
     credentials: true,
