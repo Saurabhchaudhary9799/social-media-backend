@@ -39,6 +39,10 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
+app.get('/', (req, res) => {
+  res.send('Hello World, from express');
+})
+
 // Routes
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/posts", postRoutes);
