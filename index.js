@@ -28,7 +28,7 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: "https://sky-social.vercel.app",
+    origin: "http://localhost:5173",
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
     optionsSuccessStatus: 200,
@@ -54,7 +54,7 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: "https://sky-social.vercel.app",
+    origin: "http://localhost:5173",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST"],
     credentials: true,
