@@ -36,4 +36,4 @@ jobs:
           -e CLOUDINARY_CLOUD_NAME='${{ secrets.CLOUDINARY_CLOUD_NAME }}' \
           -e CLOUDINARY_API_KEY='${{ secrets.CLOUDINARY_API_KEY }}' \
           -e CLOUDINARY_API_SECRET='${{ secrets.CLOUDINARY_API_SECRET }}' \
-          ${{ secrets.DOCKER_USERNAME }}/social-media-backend:latest
+          ${{ secrets.DOCKER_USERNAME }}/social-media-backend
