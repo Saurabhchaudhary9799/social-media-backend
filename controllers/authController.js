@@ -18,10 +18,10 @@ export const signup = async (req, res) => {
         .status(400)
         .json({ status: "failed", message: "Image is required" });
     }
-
+    
     const profile_image = req.files.profile_image;
     const cover_image = req.files.cover_image;
-
+   
     const uploadProfileImage = await cloudinary.uploader.upload(profile_image.tempFilePath, {
       public_id: `user-profileImage-${Date.now()}`,
       transformation: [
@@ -29,7 +29,7 @@ export const signup = async (req, res) => {
         { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
       ],
     });
-
+    
     const uploadCoverImage = await cloudinary.uploader.upload(cover_image.tempFilePath, {
       public_id: `user-coverImage-${Date.now()}`,
       transformation: [
@@ -43,7 +43,7 @@ export const signup = async (req, res) => {
         .status(400)
         .json({ status: "failed", message: "Image upload failed" });
     }
-
+    
     const newUser = await UserModel.create({
       name:req.body.name,
       username: req.body.username,
@@ -52,7 +52,7 @@ export const signup = async (req, res) => {
       profile_image: uploadProfileImage.secure_url,
       cover_image:uploadCoverImage.secure_url,
     });
-
+    
     console.log(newUser);
     const authToken = signToken(newUser._id);
 
