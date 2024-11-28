@@ -13,8 +13,10 @@ dotenv.config();
 const app = express();
 
 // DATABASE CONNECTION
+const DB = process.env.NODE_ENV === "development" ? process.env.DATABASE_LOCAL : process.env.DATABASE_URI;
+// console.log(DB);
 mongoose
-  .connect(process.env.DATABASE_URI)
+  .connect(DB)
   .then(() => console.log("Database is connected"))
   .catch((err) => console.error("Error is : ", err));
 
@@ -26,14 +28,16 @@ app.use(
 );
 app.use(express.json());
 
-app.use(
-  cors({
-    origin: "https://sky-social.vercel.app",
-    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-    credentials: true,
-    optionsSuccessStatus: 200,
-  })
-);
+
+const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://sky-social.vercel.app";
+// console.log(ALLOWED_ORIGIN)
+app.use(cors({
+  origin: ALLOWED_ORIGIN,
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  credentials: true,
+  optionsSuccessStatus: 200,
+}));
+
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
@@ -54,7 +58,7 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: "https://sky-social.vercel.app",
+    origin: "http://localhost:5173",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST"],
     credentials: true,
