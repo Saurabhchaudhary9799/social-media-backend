@@ -30,7 +30,7 @@ app.use(express.json());
 
 
 const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://sky-social.vercel.app";
-// console.log(ALLOWED_ORIGIN)
+console.log(ALLOWED_ORIGIN)
 app.use(cors({
   origin: ALLOWED_ORIGIN,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
