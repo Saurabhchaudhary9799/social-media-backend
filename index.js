@@ -103,8 +103,8 @@ io.on("connection", (socket) => {
 
   socket.on("send-message", ({ senderId, receiverId, message }) => {
     console.log("send message");
-    // console.log(receiverId);
-    // console.log(users);
+    console.log(receiverId);
+    console.log(users);
     const receiverSocketId = users[receiverId];
     // console.log(receiverSocketId);
     if (receiverSocketId) {
