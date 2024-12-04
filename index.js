@@ -64,12 +64,21 @@ const io = new Server(server, {
     credentials: true,
   },
 });
-
+let activePeople = [];
 io.on("connection", (socket) => {
   socket.on("user-joined", (userId) => {
     users[userId] = socket.id;
+    activePeople.push(userId)
+
+    console.log(activePeople);
+    const receiverSocketId = users[userId];
     console.log(users);
     console.log(`${userId} user connected with socket ID ${socket.id}`);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("active-people", {
+        people:activePeople
+      });
+    }
   });
 
   socket.on("likePost", (data) => {
@@ -122,6 +131,7 @@ io.on("connection", (socket) => {
 
   // Handle user disconnection
   socket.on("disconnect", () => {
+    // activePeople.pop(userId)
     console.log(`User disconnected: ${socket.id}`);
   });
 });

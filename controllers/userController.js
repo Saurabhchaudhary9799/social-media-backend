@@ -288,3 +288,33 @@ export const getSavedPost = async (req,res) => {
       res.status(500).json({status:"failed",message:error.message})
     }
 }
+
+export const getActivePeople = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    // console.log('userId', userId);
+
+    const { people } = req.body; // Assume `people` is passed in the body.
+    // console.log('people', people);
+
+    // Filter out the current user ID from the people array
+    const activePeopleExceptUser = people.filter((p) => p !== userId);
+    // console.log('activePeopleExceptUser', activePeopleExceptUser);
+
+    // Fetch all users
+    const allUsers = await UserModel.find();
+    // console.log('allUsers', allUsers);
+
+    // Find the active people who are in the activePeopleExceptUser array
+    const activePeople = allUsers.filter((user) =>
+      activePeopleExceptUser.includes(user.id)
+    );
+    // console.log('activePeople', activePeople);
+
+    // Return the active people
+    res.status(200).json({ status: "success", activePeople });
+  } catch (error) {
+    console.error('Error:', error.message);
+    res.status(500).json({ status: "failed", message: error.message });
+  }
+};
