@@ -110,6 +110,50 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("accept-invite",(data) => {
+    // console.log(data);
+    const receiverSocketId = users[data._id];
+    // console.log(data.currentUser)
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("acceptInvite", {
+        type: "accept",
+        receiverId:data._id,
+        receiver:data.username,
+        sender:data.currentUserId,
+        message: `${data.currentUser} invites you for game`,
+      });
+    }
+  })
+
+  socket.on("reject-invite",(data) => {
+    // console.log(data);
+    const receiverSocketId = users[data.receiver];
+    // console.log(data.currentUser)
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("rejectInvite", {
+        type: "reject",
+        message: `${data.sender} rejects your Invitation`,
+      });
+    }
+  })
+
+  socket.on("join-room", ({ roomId, sender, receiver }) => {
+    // Notify both sender and receiver to join the room
+    console.log('roomId',roomId);
+    console.log('sender',sender);
+    console.log('receiver',receiver);
+    io.to(receiver).emit("room-join", roomId);
+    io.to(sender).emit("room-join", roomId);
+   
+
+    // Optionally, add logic to join the socket to the room
+    socket.join(roomId);
+  });
+
+  socket.on("box-clicked", (data) => {
+    socket.broadcast.emit("box-clicked", data); // Broadcast to all other users
+  });
+
   socket.on("send-message", ({ senderId, receiverId, message }) => {
     console.log("send message");
     console.log(receiverId);
