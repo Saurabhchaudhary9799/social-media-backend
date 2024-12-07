@@ -26,7 +26,8 @@ export const createPost = async (req, res) => {
         { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
       ],
     });
-    // console.log(uploadResult);
+    console.log('uploadResult',uploadResult);
+   
     if (!uploadResult || !uploadResult.secure_url) {
       return res
         .status(400)
@@ -39,7 +40,7 @@ export const createPost = async (req, res) => {
       image: uploadResult.secure_url,
       tags: tagsArray,
     });
-
+console.log(newPost);
     res.status(201).json({
       status: "success",
 

@@ -3,7 +3,7 @@ import mongoose, { Schema } from "mongoose";
 const postSchema = new Schema({
   bio: {
     type: String,
-    maxLength: [100, "bio must not have more than 100 words"],
+    // maxLength: [100, "bio must not have more than 100 words"],
   },
   image: {
     type:String,
