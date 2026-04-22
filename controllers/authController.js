@@ -1,8 +1,9 @@
 import {promisify} from "util"
 import jwt from "jsonwebtoken";
-import cloudinary from './../utils/CloudinaryConfig.js';
 import UserModel from "../models/userModel.js";
 import bcrypt from "bcryptjs"
+
+const COOKIE_NAME = "jwt";
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.SECRET, {
@@ -10,66 +11,119 @@ const signToken = (id) => {
   });
 };
 
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge:
+    Number(process.env.JWT_COOKIE_EXPIRES_IN || 90) *
+    24 *
+    60 *
+    60 *
+    1000,
+});
+
+const setAuthCookie = (res, token) => {
+  res.cookie(COOKIE_NAME, token, getCookieOptions());
+};
+
+const getCookieToken = (req) => {
+  const cookieHeader = req.headers.cookie;
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader.split(";").reduce((acc, currentCookie) => {
+    const [key, ...value] = currentCookie.trim().split("=");
+
+    if (key) {
+      acc[key] = decodeURIComponent(value.join("="));
+    }
+
+    return acc;
+  }, {});
+
+  return cookies[COOKIE_NAME] || null;
+};
+
+const sendAuthResponse = (res, statusCode, user) => {
+  const authToken = signToken(user._id);
+
+  setAuthCookie(res, authToken);
+
+  return res.status(statusCode).json({
+    status: "success",
+    token: authToken,
+    result: {
+      user,
+    },
+  });
+};
+
+const normalizeToken = (token) => {
+  
+  if (!token || typeof token !== "string") {
+    return null;
+  }
+
+  const trimmedToken = token.trim().replace(/^"|"$/g, "");
+
+  if (
+    !trimmedToken ||
+    trimmedToken === "null" ||
+    trimmedToken === "undefined"
+  ) {
+    return null;
+  }
+
+  return trimmedToken;
+};
+
 export const signup = async (req, res) => {
   try {
+    const { name, username, email, password } = req.body;
 
-    if (!req.files || !req.files.profile_image || !req.files.cover_image) {
-      return res
-        .status(400)
-        .json({ status: "failed", message: "Image is required" });
+    // ✅ 1. Validate request body
+    if (!name || !username || !email || !password) {
+      return res.status(400).json({
+        status: "failed",
+        message: "All fields are required",
+      });
     }
-    
-    const profile_image = req.files.profile_image;
-    const cover_image = req.files.cover_image;
-   
-    const uploadProfileImage = await cloudinary.uploader.upload(profile_image.tempFilePath, {
-      public_id: `user-profileImage-${Date.now()}`,
-      transformation: [
-        { width: 500, height: 500, crop: "auto", gravity: "auto" }, // Auto-crop and resize
-        { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
-      ],
-    });
-    
-    const uploadCoverImage = await cloudinary.uploader.upload(cover_image.tempFilePath, {
-      public_id: `user-coverImage-${Date.now()}`,
-      transformation: [
-        { width: 500, height: 500, crop: "auto", gravity: "auto" }, // Auto-crop and resize
-        { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
-      ],
+
+    // ✅ 2. Check existing user (email or username)
+    const existingUser = await UserModel.findOne({
+      $or: [{ email }, { username }],
     });
 
-    if (!uploadProfileImage || !uploadProfileImage.secure_url || !uploadCoverImage || !uploadCoverImage.secure_url ) {
-      return res
-        .status(400)
-        .json({ status: "failed", message: "Image upload failed" });
+    if (existingUser) {
+      return res.status(400).json({
+        status: "failed",
+        message:
+          existingUser.email === email
+            ? "Email already exists"
+            : "Username already taken",
+      });
     }
-    
+
+    // ✅ 3. Create user (NO image upload here)
     const newUser = await UserModel.create({
-      name:req.body.name,
-      username: req.body.username,
-      email: req.body.email,
-      password: req.body.password,
-      profile_image: uploadProfileImage.secure_url,
-      cover_image:uploadCoverImage.secure_url,
+      name,
+      username,
+      email,
+      password,
     });
-    
-    console.log(newUser);
-    const authToken = signToken(newUser._id);
 
-    res.status(201).json({
-      status: "success",
-      authToken,
-      result: {
-        user: newUser,
-      },
-    });
+    return sendAuthResponse(res, 201, newUser);
   } catch (error) {
-    res.status(400).json({
+    return res.status(500).json({
       status: "error",
       message: error.message,
     });
   }
 };
+
 
 export const login = async (req, res) => {
   try {
@@ -109,16 +163,8 @@ export const login = async (req, res) => {
         });
     }
 
-    const authToken = signToken(user._id);
-    // console.log(user);
-
-    res.status(200).json({
-      status: "success",
-      authToken,
-      result: {
-        user,
-      },
-    });
+    user.password = undefined;
+    return sendAuthResponse(res, 200, user);
   } catch (error) {
     res.status(400).json({
       status: "error",
@@ -129,35 +175,41 @@ export const login = async (req, res) => {
 
 
 export const protect  = async(req,res,next) => {
-   let token ;
-   if(req.headers.authorization && req.headers.authorization.startsWith("Bearer")){
-  token = req.headers.authorization.split(' ')[1]
-   }
+   try {
+    const token = normalizeToken(getCookieToken(req));
 
-   if(!token){
-    return res
-        .status(400)
-        .json({
-          status: "failed",
-          message: "please check , user is not logged in",
-        });
-   }
+    if(!token){
+      return res
+          .status(401)
+          .json({
+            status: "failed",
+            message: "please check, user is not logged in",
+          });
+    }
 
-   const decoded = await promisify(jwt.verify)(token,process.env.SECRET)
-//   console.log(decoded.id)
-   const currentUser = await UserModel.findById(decoded.id)
-//    console.log(currentUser)
-   if(!currentUser){
-    return res
-    .status(400)
-    .json({
+    const decoded = await promisify(jwt.verify)(token,process.env.SECRET)
+    const currentUser = await UserModel.findById(decoded.id)
+
+    if(!currentUser){
+      return res
+      .status(401)
+      .json({
+        status: "failed",
+        message: "User doesn't exist",
+      });
+    }
+
+    req.user = currentUser
+    next()
+   } catch (error) {
+    return res.status(401).json({
       status: "failed",
-      message: "User doesn't exist",
+      message:
+        error.name === "JsonWebTokenError" || error.name === "TokenExpiredError"
+          ? "Invalid or expired token"
+          : error.message,
     });
    }
-
-   req.user = currentUser
-   next()
 }
 
 export const updatePassword = async (req,res) => {
@@ -178,16 +230,8 @@ export const updatePassword = async (req,res) => {
     currentUser.password = new_password
     await currentUser.save({ validateModifiedOnly: true })
 
-    const authToken = signToken(currentUser._id);
-
     currentUser.password = undefined;
-    res.status(201).json({
-      status: "success",
-      authToken,
-      result: {
-        user: currentUser,
-      },
-    });
+    return sendAuthResponse(res, 201, currentUser);
 
     // console.log('new',currentUser.password)
   } catch (error) {
@@ -196,4 +240,17 @@ export const updatePassword = async (req,res) => {
       message: error.message,
     });
   }
+}
+
+export const logout = async (req, res) => {
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
+
+  return res.status(200).json({
+    status: "success",
+    message: "Logged out successfully",
+  });
 }

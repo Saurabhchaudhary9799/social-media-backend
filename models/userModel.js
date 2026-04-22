@@ -1,11 +1,11 @@
 import mongoose, { Schema } from "mongoose";
 import bcrypt from "bcryptjs";
-const userSchema = new Schema(
+export const userSchema = new Schema(
   {
-    name:{
-      type:String,
-      required:[true,'name must be required'],
-      trim:true
+    name: {
+      type: String,
+      required: [true, "name must be required"],
+      trim: true,
     },
     username: {
       type: String,
@@ -30,22 +30,36 @@ const userSchema = new Schema(
       minLength: [8, "paassword must contain minimum 8 letters"],
       select: false,
     },
-    profile_image:{
-       type:String,
-       required:true,
+    profile_image: {
+      type: String,
+      required: false,
     },
-    cover_image:{
-      type:String,
-      required:true,
+    cover_image: {
+      type: String,
+      required: false,
     },
-    bio:{
-       type:String,
-       default:"",
-       maxLength:[100,'bio must not have more than 100 letters']
+    bio: {
+      type: String,
+      default: "",
+      maxLength: [150, "bio must not have more than 150 letters"],
     },
     createdAt: {
       type: Date,
       default: Date.now,
+    },
+    location: {
+      x: {
+        type: Number,
+        required: false, // Not required at the time of creation
+
+        default: null,
+      },
+      y: {
+        type: Number,
+        required: false, // Not required at the time of creation
+
+        default: null,
+      },
     },
   },
   {
@@ -54,30 +68,33 @@ const userSchema = new Schema(
   }
 );
 
-userSchema.virtual('posts',{
-    ref:'Post',
-    localField:"_id",
-    foreignField:"user"
-})
-
-userSchema.virtual('followers', {
-  ref: 'Follower', // The model to use
-  localField: '_id', // The field in the User schema
-  foreignField: 'user', // The field in the Follower schema
+userSchema.virtual("posts", {
+  ref: "Post",
+  localField: "_id",
+  foreignField: "user",
 });
 
-userSchema.virtual('savedPosts', {
-  ref: 'Save', // The model to use
-  localField: '_id', // The field in the User schema
-  foreignField: 'user', // The field in the Follower schema
+userSchema.virtual("followers", {
+  ref: "Follower", // The model to use
+  localField: "_id", // The field in the User schema
+  foreignField: "user", // The field in the Follower schema
+});
+
+userSchema.virtual("savedPosts", {
+  ref: "Save", // The model to use
+  localField: "_id", // The field in the User schema
+  foreignField: "user", // The field in the Follower schema
 });
 
 // Virtual field for following
-userSchema.virtual('followings', {
-  ref: 'Following', // The model to use
-  localField: '_id', // The field in the User schema
-  foreignField: 'user', // The field in the Following schema
+userSchema.virtual("followings", {
+  ref: "Following", // The model to use
+  localField: "_id", // The field in the User schema
+  foreignField: "user", // The field in the Following schema
 });
+
+userSchema.index({ username: 1 }, { unique: true });
+userSchema.index({ email: 1 }, { unique: true });
 
 userSchema.pre("save", async function (next) {
   try {

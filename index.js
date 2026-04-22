@@ -8,6 +8,7 @@ import fileUpload from "express-fileupload";
 import http from "http"; // Required for Socket.IO integration
 import userRoutes from "./routes/userRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
+import { time } from "console";
 
 dotenv.config();
 const app = express();
@@ -29,7 +30,7 @@ app.use(
 app.use(express.json());
 
 
-const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://sky-social.vercel.app";
+const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sky-social.vercel.app";
 console.log(ALLOWED_ORIGIN)
 app.use(cors({
   origin: ALLOWED_ORIGIN,
@@ -58,56 +59,91 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: "http://localhost:3000",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
-let activePeople = [];
+let activePeople =new Map();
 io.on("connection", (socket) => {
   socket.on("user-joined", (userId) => {
-    users[userId] = socket.id;
-    activePeople.push(userId)
+    // users[userId] = socket.id;
+    // activePeople.push(userId)
+    activePeople.set(userId, socket.id);
 
-    console.log(activePeople);
-    const receiverSocketId = users[userId];
-    console.log(users);
+    console.log("activePeople",activePeople);
+
+    io.emit("active-people", {
+      people: Array.from(activePeople.keys()), // send userIds only
+    });
+    
     console.log(`${userId} user connected with socket ID ${socket.id}`);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("active-people", {
-        people:activePeople
-      });
-    }
+    
   });
 
   socket.on("likePost", (data) => {
-    const receiverSocketId = users[data.userId];
+     const receiverSocketId = activePeople.get(data.userId);
+     const type = data.action === "Post liked" ? "like" : "unlike";
+     const message = data.action === "Post liked" ? `${data.username} liked your post` : `${data.username} unliked your post`;
+
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("receiveNotification", {
         type: "like",
-        message: `${data.username} ${data.action} your post`,
+        message: message,
       });
     }
   });
   socket.on("commentOnPost", (data) => {
-    const receiverSocketId = users[data.userId];
+    const receiverSocketId = activePeople.get(data.userId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("receiveNotification", {
         type: "comment",
-        message: `${data.username} commented your post`,
+        message: `${data.username} commented on your post ${data.message}`,
       });
     }
   });
 
   socket.on("followAndUnfollowUser", (data) => {
-    const receiverSocketId = users[data.userId];
+    const receiverSocketId = activePeople.get(data.userId);
+    const type = data.action === "Followed successfully" ? "follow" : "unfollow";
+     const message = data.action === "Followed successfully" ? `${data.username} followed you` : `${data.username} unfollowed you`;
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("receiveNotification", {
         type: "follow",
-        message: `${data.username} ${data.action} you`,
+        message: message,
       });
     }
+  });
+
+    socket.on("typing", ({ senderId, receiverId }) => {
+     const receiverSocketId = activePeople.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("typing", { senderId });
+    }
+  });
+
+  socket.on("stop-typing", ({ senderId, receiverId }) => {
+    const receiverSocketId = activePeople.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("stop-typing", { senderId });
+    }
+  });
+
+    socket.on("messages-seen", ({ senderId, receiverId }) => {
+    const senderSocket = activePeople.get(senderId);
+
+    if (senderSocket) {
+      io.to(senderSocket).emit("messages-seen", {
+        senderId: receiverId,
+      });
+    }
+
+    // 👉 Optional: update DB
+    // await Message.updateMany(
+    //   { sender: senderId, receiver: receiverId, seen: false },
+    //   { seen: true }
+    // );
   });
 
   socket.on("accept-invite",(data) => {
@@ -150,31 +186,58 @@ io.on("connection", (socket) => {
     socket.join(roomId);
   });
 
+  socket.on("send-group-message",({sender,receivers,message,profile_image,username,timestamp}) => {
+     console.log(sender,receivers,message,timestamp,profile_image,username);
+     for(let receiver in receivers){
+      console.log('receiver',receiver);
+      const receiverSocketId = users[receivers[receiver].memberId];
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("receive-message", {
+          sender,
+          message,
+          profile_image,
+          username,
+          createdAt:timestamp
+        });
+      }
+     }
+  })
+
   socket.on("box-clicked", (data) => {
     socket.broadcast.emit("box-clicked", data); // Broadcast to all other users
   });
 
   socket.on("send-message", ({ senderId, receiverId, message }) => {
     console.log("send message");
-    console.log(receiverId);
-    console.log(users);
-    const receiverSocketId = users[receiverId];
-    // console.log(receiverSocketId);
+  
+    const receiverSocketId = activePeople.get(receiverId);
+  
     if (receiverSocketId) {
-      // Send message to the receiver
-
       io.to(receiverSocketId).emit("receive-message", {
         senderId,
+        receiverId,
         message,
+        createdAt: new Date(),
       });
     } else {
-      console.log("User is offline or not connected");
+      console.log("User is offline");
     }
   });
   // Handle private messaging between two users
 
   // Handle user disconnection
   socket.on("disconnect", () => {
+    for (let [userId, socketId] of activePeople.entries()) {
+      if (socketId === socket.id) {
+        activePeople.delete(userId);
+        break;
+      }
+    }
+  
+    io.emit("active-people", {
+      people: Array.from(activePeople.keys()),
+    });
+  
     // activePeople.pop(userId)
     console.log(`User disconnected: ${socket.id}`);
   });

@@ -1,4 +1,9 @@
-import { saveModel } from "../models/followModel.js";
+import Community from "../models/communityModel.js";
+import {
+  FollowerModel,
+  FollowingModel,
+  saveModel,
+} from "../models/followModel.js";
 import MessageModel from "../models/messageModel.js";
 import PostModel from "../models/postModel.js";
 import UserModel from "../models/userModel.js";
@@ -6,23 +11,34 @@ import { v2 as cloudinary } from "cloudinary";
 
 export const getUser = async (req, res) => {
   try {
-    // console.log(req.user._id)
-    const user = await UserModel.findById({ _id: req.user._id })
-      .populate({
-        path: "posts",
-        populate: [
-          { path: "likes", select: "username" },
-          { path: "comments", select: "text username" },
-        ],
-      })
-      .populate("followers")
-      .populate("followings")
-      .populate("savedPosts")
-    // console.log(user)
+    const user = await UserModel.findById(req.user._id).select(
+      "_id name username email profile_image cover_image bio",
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        status: "failed",
+        message: "User not found",
+      });
+    }
+
+    const [postsCount, followersCount, followingsCount, savedPostsCount] =
+      await Promise.all([
+        PostModel.countDocuments({ user: req.user._id }),
+        FollowerModel.countDocuments({ user: req.user._id }),
+        FollowingModel.countDocuments({ user: req.user._id }),
+        saveModel.countDocuments({ user: req.user._id }),
+      ]);
+
     res.status(200).json({
       status: "success",
-      result: {
-        user,
+      user: {
+        ...user.toObject(),
+
+        posts: postsCount,
+        followers: followersCount,
+        followings: followingsCount,
+        savedPosts: savedPostsCount,
       },
     });
   } catch (error) {
@@ -36,80 +52,93 @@ export const getUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const updateData = {};
+    const uploadPromises = [];
 
-    // Check for bio in request body
+    if (req.body.name) {
+      updateData.name = req.body.name;
+    }
+    if (req.body.username) {
+      updateData.username = req.body.username;
+    }
+
+    // ✅ Bio
     if (req.body.bio) {
       updateData.bio = req.body.bio;
     }
 
-    // Check if profile_image is provided in req.files
-    if (req.files && req.files.profile_image) {
-      const profile_image = req.files.profile_image;
-      const result = await cloudinary.uploader.upload(
-        profile_image.tempFilePath,
-        {
-          public_id: `user-coverImage-${Date.now()}`,
+    // ✅ Profile image upload (parallel)
+    if (req.files?.profile_image) {
+      const profileImage = req.files.profile_image;
+
+      const profilePromise = cloudinary.uploader
+        .upload(profileImage.tempFilePath, {
+          public_id: `user-profile-${Date.now()}`,
           transformation: [
-            { width: 500, height: 500, crop: "auto", gravity: "auto" }, // Auto-crop and resize
-            { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
+            { width: 500, height: 500, crop: "auto", gravity: "auto" },
+            { fetch_format: "auto", quality: "auto" },
           ],
-        }
-      );
-      updateData.profile_image = result.secure_url;
+        })
+        .then((res) => {
+          updateData.profile_image = res.secure_url;
+        });
+
+      uploadPromises.push(profilePromise);
     }
 
-    // Check if cover_image is provided in req.files
-    if (req.files && req.files.cover_image) {
-      const cover_image = req.files.cover_image;
-      const result = await cloudinary.uploader.upload(
-        cover_image.tempFilePath,
-        {
-          public_id: `user-coverImage-${Date.now()}`,
+    // ✅ Cover image upload (parallel)
+    if (req.files?.cover_image) {
+      const coverImage = req.files.cover_image;
+
+      const coverPromise = cloudinary.uploader
+        .upload(coverImage.tempFilePath, {
+          public_id: `user-cover-${Date.now()}`,
           transformation: [
-            { width: 500, height: 500, crop: "auto", gravity: "auto" }, // Auto-crop and resize
-            { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
+            { width: 800, height: 300, crop: "auto", gravity: "auto" },
+            { fetch_format: "auto", quality: "auto" },
           ],
-        }
-      );
-      updateData.cover_image = result.secure_url;
+        })
+        .then((res) => {
+          updateData.cover_image = res.secure_url;
+        });
+
+      uploadPromises.push(coverPromise);
     }
 
+    // ✅ Run uploads in parallel
+    await Promise.all(uploadPromises);
+
+    // ✅ Update DB
     const updatedUser = await UserModel.findByIdAndUpdate(
-      { _id: req.user._id },
+      req.user._id,
       updateData,
-      { new: true, runValidators: true }
-    );
+      { new: true, runValidators: true },
+    ).select("-password");
 
     if (!updatedUser) {
-      res.status(400).json({
+      return res.status(404).json({
         status: "failed",
-        message: "user not found",
+        message: "User not found",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       message: "User updated successfully",
       data: updatedUser,
     });
   } catch (error) {
-    res.status(401).json({
+    return res.status(500).json({
       status: "failed",
-      message: error.message,
+      message: error,
     });
   }
 };
-
 export const getUserByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
-    // console.log(userId);
-
-    // Fetch the user details first
-    const user = await UserModel.findById(userId)
-      .select("-password -__v")
-      .populate("followers") // Populate followers
-      .populate("followings"); // Assuming you don't want to send back the password
+    const user = await UserModel.findById(userId).select(
+      "_id name username profile_image cover_image bio",
+    );
 
     if (!user) {
       return res
@@ -117,47 +146,141 @@ export const getUserByUserId = async (req, res) => {
         .json({ status: "failed", message: "User not found" });
     }
 
-    // Fetch the posts associated with the user
-    const userPosts = await PostModel.find({ user: userId }) // Correct usage of `find` to find posts by the user
-      .populate({
-        path: "comments",
-        select: "id", // Populate comments but exclude unnecessary fields
-      })
-      .populate({
-        path: "likes",
-        select: "id", // Populate likes but exclude unnecessary fields
-      })
-
-      .select("-__v") // Exclude __v field from posts
-      .sort({ createdAt: -1 }); // Sort by creation date
-
-      const savedPosts = await saveModel.find({user:userId}).populate({
-         path:"post",
-        select:"_id image",
-        populate: [
-          { path: "likes", select: "username" },
-          { path: "comments", select: "text username" },
-        ],
-      }).select("post")
+    const [postsCount, followersCount, followingsCount, savedPostsCount] =
+      await Promise.all([
+        PostModel.countDocuments({ user: userId }),
+        FollowerModel.countDocuments({ user: userId }),
+        FollowingModel.countDocuments({ user: userId }),
+        saveModel.countDocuments({ user: userId }),
+      ]);
 
     res.status(200).json({
       status: "success",
       user: {
-        id: user._id,
-        name: user.name,
-        username: user.username,
-        profile_image: user.profile_image,
-        cover_image: user.cover_image,
-        bio: user.bio,
-        posts: userPosts,
-        savedPosts:savedPosts,
-        followers: user.followers, // Send followers
-        followings: user.followings,
-        // Any other fields you want to return from the user
+        ...user.toObject(),
+
+        posts: postsCount,
+        followers: followersCount,
+        followings: followingsCount,
+        savedPosts: savedPostsCount,
       },
     });
   } catch (error) {
     res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getPostsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [posts, totalPosts] = await Promise.all([
+      PostModel.find({ user: userId })
+        .populate({
+          path: "comments",
+          select: "text username",
+        })
+        .populate({
+          path: "likes",
+          select: "username",
+        })
+        .select("-__v")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      PostModel.countDocuments({ user: userId }),
+    ]);
+
+    return res.status(200).json({
+      status: "success",
+      result: posts,
+      pagination: {
+        page,
+        limit,
+        total: totalPosts,
+        totalPages: Math.ceil(totalPosts / limit),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getSavedPostsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log(userId);
+
+    const savedPosts = await saveModel.find({ user: userId }).populate({
+      path: "post",
+      select: "_id image bio user createdAt",
+      populate: [
+        { path: "likes", select: "username" },
+        { path: "comments", select: "text username" },
+      ],
+    });
+
+    return res.status(200).json({
+      status: "success",
+      result: savedPosts,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getFollowersByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const followers = await FollowerModel.find({ user: userId })
+      .populate({
+        path: "follower",
+        select: "_id name username profile_image bio",
+      })
+      .select("_id follower");
+
+    return res.status(200).json({
+      status: "success",
+      result: followers,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getFollowingsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const followings = await FollowingModel.find({ user: userId })
+      .populate({
+        path: "following",
+        select: "_id name username profile_image bio",
+      })
+      .select("_id following");
+
+    return res.status(200).json({
+      status: "success",
+      result: followings,
+    });
+  } catch (error) {
+    return res.status(500).json({
       status: "failed",
       message: error.message,
     });
@@ -179,14 +302,14 @@ export const listSuggestedPeople = async (req, res) => {
     // console.log(currentUser);
     // Find all users except the current user
     const allUsers = await UserModel.find({ _id: { $ne: userId } }).select(
-      "_id username profile_image"
+      "_id username profile_image",
     );
     // console.log(allUsers);
     // Filter users who are not in the current user's following list
     // and who are not already following the current user
     const suggestedPeople = allUsers.filter((user) => {
       return !currentUser.followings.some(
-        (followedUser) => followedUser.following.toString() === user.id
+        (followedUser) => followedUser.following.toString() === user.id,
       );
     });
 
@@ -200,94 +323,94 @@ export const listSuggestedPeople = async (req, res) => {
 
 export const searchUser = async (req, res) => {
   try {
-    const {username} = req.body;
-    // console.log(username)
-    const searchingUser = await UserModel.find({username}); 
-    // console.log(searchingUser)
-    if (searchingUser.length === 0) {
-      return res
-        .status(404)
-        .json({ status: "failed", message: "User not found" });
+    console.log(req.query);
+    const { username } = req.query; // ✅ use query for search
+    console.log(username);
+    if (!username || username.trim() === "") {
+      return res.status(200).json({ status: "success", result: [] });
     }
+    console.log("h1");
+    const users = await UserModel.find({
+      username: { $regex: username, $options: "i" }, // 🔥 partial + case insensitive
+    }).limit(10); // ✅ limit results (important for performance)
 
-    return res
-      .status(200)
-      .json({ status: "success", result:searchingUser });
+    return res.status(200).json({
+      status: "success",
+      result: users,
+    });
   } catch (error) {
     res.status(500).json({ message: "Something went wrong." });
   }
 };
 
-
-export const listPeople = async (req,res) => {
-   try {
-      const allMessagesOfUser = await MessageModel.find({
-        $or :[
-           {sender:req.user._id},
-           {receiver:req.user._id},
-        ]
-      }).populate({
-        path:"sender",
-        select:"_id username profile_image"
-      }).populate({
-        path:"receiver",
-        select:"_id username profile_image"
+export const listPeople = async (req, res) => {
+  try {
+    const allMessagesOfUser = await MessageModel.find({
+      $or: [{ sender: req.user._id }, { receiver: req.user._id }],
+    })
+      .populate({
+        path: "sender",
+        select: "_id username profile_image",
       })
-
-      // console.log(allMessagesOfUser)
-      let allUsers = {};
-
-      // Loop through all the messages and group by the other user (not `req.user._id`)
-      allMessagesOfUser.forEach((m) => {
-        const otherUser = m.sender.id === req.user._id.toString() ? m.receiver : m.sender;
-      
-        // Check if this user is already in the allUsers object
-        if (!allUsers[otherUser.id]) {
-          allUsers[otherUser.id] = {
-            user: otherUser, // Store the user object
-            lastMessage: m // Store the first message as the last one (will be replaced later)
-          };
-        } else {
-          // Replace the last message if the current one is newer
-          if (new Date(m.createdAt) > new Date(allUsers[otherUser.id].lastMessage.createdAt)) {
-            allUsers[otherUser.id].lastMessage = m;
-          }
-        }
+      .populate({
+        path: "receiver",
+        select: "_id username profile_image",
       });
-      
-      // Convert the result into an array of users with their last messages
-      const usersWithLastMessages = Object.values(allUsers);
-      
-      // console.log(usersWithLastMessages);
-      
-  res.status(200).json({status:"success",users:usersWithLastMessages})
 
-   } catch (error) {
-    res.status(500).json({status:"failed",message:error.message})
-   }
-}
+    // console.log(allMessagesOfUser)
+    let allUsers = {};
 
+    // Loop through all the messages and group by the other user (not `req.user._id`)
+    allMessagesOfUser.forEach((m) => {
+      const otherUser =
+        m.sender.id === req.user._id.toString() ? m.receiver : m.sender;
 
-export const getSavedPost = async (req,res) => {
-    try {
-       const userId= req.user._id
+      // Check if this user is already in the allUsers object
+      if (!allUsers[otherUser.id]) {
+        allUsers[otherUser.id] = {
+          user: otherUser, // Store the user object
+          lastMessage: m, // Store the first message as the last one (will be replaced later)
+        };
+      } else {
+        // Replace the last message if the current one is newer
+        if (
+          new Date(m.createdAt) >
+          new Date(allUsers[otherUser.id].lastMessage.createdAt)
+        ) {
+          allUsers[otherUser.id].lastMessage = m;
+        }
+      }
+    });
 
-       const savedPost = await saveModel.find({user:userId}).populate({
-        path: "post",
-        select:"_id image",
-        populate: [
-          { path: "likes", select: "username" },
-          { path: "comments", select: "text username" },
-        ],
-      })
-       
-       return res
-      .status(200)
-      .json({ status: "success", result:savedPost });
-    } catch (error) {
-      res.status(500).json({status:"failed",message:error.message})
-    }
-}
+    // Convert the result into an array of users with their last messages
+    const usersWithLastMessages = Object.values(allUsers);
+
+    // console.log(usersWithLastMessages);
+
+    res.status(200).json({ status: "success", users: usersWithLastMessages });
+  } catch (error) {
+    res.status(500).json({ status: "failed", message: error.message });
+  }
+};
+
+export const getSavedPost = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const savedPost = await saveModel.find({ user: userId }).populate({
+      path: "post",
+      select: "_id image",
+      populate: [
+        { path: "likes", select: "username" },
+        { path: "comments", select: "text username" },
+      ],
+    });
+
+    return res.status(200).json({ status: "success", result: savedPost });
+  } catch (error) {
+    res.status(500).json({ status: "failed", message: error.message });
+  }
+};
 
 export const getActivePeople = async (req, res) => {
   try {
@@ -307,14 +430,271 @@ export const getActivePeople = async (req, res) => {
 
     // Find the active people who are in the activePeopleExceptUser array
     const activePeople = allUsers.filter((user) =>
-      activePeopleExceptUser.includes(user.id)
+      activePeopleExceptUser.includes(user.id),
     );
     // console.log('activePeople', activePeople);
 
     // Return the active people
     res.status(200).json({ status: "success", activePeople });
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error("Error:", error.message);
     res.status(500).json({ status: "failed", message: error.message });
+  }
+};
+
+export const updateLocation = async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+
+    // Validate latitude and longitude
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
+      return res.status(400).json({
+        status: "failed",
+        message: "Invalid latitude or longitude",
+      });
+    }
+
+    // Update user location
+    const user = await UserModel.findByIdAndUpdate(
+      req.user._id,
+      {
+        $set: {
+          "location.x": latitude,
+          "location.y": longitude,
+        },
+      },
+      { new: true },
+    );
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: "failed", message: "User not found" });
+    }
+
+    // Function to calculate distance using the Haversine formula
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // Earth's radius in km
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // Distance in km
+
+      // x
+      // 32.9494528
+      // y
+      // 74.9910112
+    };
+
+    // Find a matching community
+    const communities = await Community.find({}); // Fetch all communities
+    let matchedCommunity = null;
+
+    for (const community of communities) {
+      for (const member of community.members) {
+        const distance = calculateDistance(
+          latitude,
+          longitude,
+          member.location.x,
+          member.location.y,
+        );
+        // console.log('distance',distance);
+        if (distance <= 5) {
+          matchedCommunity = community;
+          break;
+        }
+      }
+      if (matchedCommunity) break;
+    }
+    console.log("matched", matchedCommunity);
+    // If no matching community, create a new one
+    if (!matchedCommunity) {
+      // console.log(hello);
+      matchedCommunity = new Community({
+        members: [
+          {
+            memberId: user._id,
+            name: user.name,
+            username: user.username,
+            email: user.email,
+            profile_image: user.profile_image,
+            cover_image: user.cover_image,
+            location: {
+              x: user.location.x,
+              y: user.location.y,
+            },
+          },
+        ],
+      });
+
+      await matchedCommunity.save();
+    } else {
+      // Add user to the matched community if not already a member
+      if (
+        !matchedCommunity.members.some(
+          (member) => member.memberId === user._id.toString(),
+        )
+      ) {
+        matchedCommunity.members.push({
+          memberId: user._id,
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          profile_image: user.profile_image,
+          cover_image: user.cover_image,
+          location: {
+            x: user.location.x,
+            y: user.location.y,
+          },
+        });
+        await matchedCommunity.save();
+      }
+    }
+
+    // Return updated user data and community information
+    res.status(200).json({
+      status: "success",
+      message: "Location updated successfully",
+      data: {
+        user,
+        community: {
+          id: matchedCommunity._id,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getCommunityMembers = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const communities = await Community.find({});
+    let matchedCommunity = null;
+    for (const community of communities) {
+      for (const member of community.members) {
+        const user = member.memberId === userId.toString();
+        if (user) {
+          matchedCommunity = community;
+          break;
+        }
+      }
+      if (matchedCommunity) break;
+    }
+
+    // console.log('matched',matchedCommunity)
+
+    res.status(200).json({
+      status: "success",
+      members: matchedCommunity.members,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const sendMessageInGroup = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    console.log(userId);
+    const { message, timestamp, profile_image, username } = req.body;
+
+    const communities = await Community.find({});
+    console.log(communities);
+    let matchedCommunity = null;
+    for (const community of communities) {
+      for (const member of community.members) {
+        const user = member.memberId === userId.toString();
+        if (user) {
+          matchedCommunity = community;
+          break;
+        }
+      }
+      if (matchedCommunity) break;
+    }
+    // console.log(matchedCommunity);
+    if (!matchedCommunity) {
+      return res.status(404).json({
+        status: "failed",
+        message: "No matched community found",
+      });
+    } else {
+      matchedCommunity.chats.push({
+        message,
+        sender: userId.toString(),
+        createdAt: timestamp,
+        profile_image,
+        username,
+      });
+      await matchedCommunity.save();
+    }
+
+    res.status(201).json({
+      status: "success",
+      data: {
+        message,
+        sender: userId.toString(),
+        profile_image,
+        username,
+        createdAt: timestamp,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getAllChatsOfGroup = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const communities = await Community.find({});
+    let matchedCommunity = null;
+    for (const community of communities) {
+      for (const member of community.members) {
+        const user = member.memberId === userId.toString();
+        if (user) {
+          matchedCommunity = community;
+          break;
+        }
+      }
+      if (matchedCommunity) break;
+    }
+
+    if (!matchedCommunity) {
+      return res.status(404).json({
+        status: "failed",
+        message: "No matched community found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      messages: matchedCommunity.chats,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
   }
 };

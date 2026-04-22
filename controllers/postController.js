@@ -2,52 +2,56 @@ import cloudinary from "./../utils/CloudinaryConfig.js";
 import PostModel from "../models/postModel.js";
 import { saveModel } from "../models/followModel.js";
 import UserModel from "../models/userModel.js";
+import mongoose from "mongoose";
 
 export const createPost = async (req, res) => {
   try {
     const userId = req.user._id;
-    const tagsString = req.body.tags;
-    const tagsArray = tagsString?.split(",");
-    console.log(tagsArray);
-    // console.log("userId", userId);
 
-    // console.log(req.files);
-    if (!req.files || !req.files.image) {
-      return res
-        .status(400)
-        .json({ status: "failed", message: "Image is required" });
+    // ✅ Validate image FIRST (important)
+    if (!req.files?.image) {
+      return res.status(400).json({
+        status: "failed",
+        message: "Image is required",
+      });
     }
+
     const image = req.files.image;
-    // console.log("image", image);
+
+    // ✅ Clean tags (handle string OR array safely)
+    let tagsArray = req.body.tags || [];
+
+    // ✅ Upload image
     const uploadResult = await cloudinary.uploader.upload(image.tempFilePath, {
-      public_id: `user-${userId}-${Date.now()}`,
+      public_id: `post-${userId}-${Date.now()}`,
+      folder: "posts",
       transformation: [
-        { width: 500, height: 500, crop: "auto", gravity: "auto" }, // Auto-crop and resize
-        { fetch_format: "auto", quality: "auto" }, // Optimize format and quality
+        { width: 800, crop: "limit" },
+        { fetch_format: "auto", quality: "auto" },
       ],
     });
-    console.log('uploadResult',uploadResult);
-   
-    if (!uploadResult || !uploadResult.secure_url) {
-      return res
-        .status(400)
-        .json({ status: "failed", message: "Image upload failed" });
+
+    if (!uploadResult?.secure_url) {
+      return res.status(400).json({
+        status: "failed",
+        message: "Image upload failed",
+      });
     }
 
+    // ✅ Create post
     const newPost = await PostModel.create({
       bio: req.body.bio,
       user: userId,
-      image: uploadResult.secure_url,
+      image: uploadResult.secure_url, // 🔥 now required
       tags: tagsArray,
     });
-console.log(newPost);
-    res.status(201).json({
-      status: "success",
 
+    return res.status(201).json({
+      status: "success",
       post: newPost,
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(500).json({
       status: "failed",
       message: error.message,
     });
@@ -65,9 +69,6 @@ export const getAllPosts = async (req, res) => {
       .populate({ path: "followings", select: "_id following -user" })
       .select("followings ");
     // console.log(allFollowings);
-
-
-
 
     const allPosts = await PostModel.find()
       .populate({
@@ -87,30 +88,111 @@ export const getAllPosts = async (req, res) => {
         select: " user", // Exclude __v from the comments
       })
       .select("-__v")
-      .sort({ createdAt: -1 })
-      
+      .sort({ createdAt: -1 });
 
     allPosts.forEach((post) => {
       post.comments.sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       );
     });
 
     const FeedPosts = allPosts.filter((post) => {
       return allFollowings.followings.some(
-        (followedUser) => followedUser.following.toString() === post.user?.id
-       
+        (followedUser) => followedUser.following.toString() === post.user?.id,
       );
     });
-  
+
     // console.log(FeedPosts)
-const posts = FeedPosts.slice(skip,skip+limit)
-    
+    const posts = FeedPosts.slice(skip, skip + limit);
+
     res.status(200).json({
       status: "success",
-      total:posts.length,
+      total: posts.length,
       result: {
         posts: posts,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getHomeFeedPosts = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = parseInt(req.query.skip) || 0;
+
+    const posts = await PostModel.find()
+      .populate({
+        path: "user",
+        select: "-__v",
+      })
+      .populate({
+        path: "comments",
+        select: "-__v",
+        populate: {
+          path: "user",
+          select: "id username profile_image",
+        },
+      })
+      .populate({
+        path: "likes",
+        select: "user",
+      })
+      .select("-__v")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    posts.forEach((post) => {
+      post.comments.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+      );
+    });
+
+    return res.status(200).json({
+      status: "success",
+      total: posts.length,
+      result: {
+        posts,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "failed",
+      message: error.message,
+    });
+  }
+};
+
+export const getMyPosts = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = parseInt(req.query.skip) || 0;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: "failed",
+        message: "UserId is required",
+      });
+    }
+
+    const posts = await PostModel.find({ user: userId })
+      .select("_id bio image createdAt") // ✅ only needed fields
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.status(200).json({
+      status: "success",
+      total: posts.length,
+      result: {
+        posts,
       },
     });
   } catch (error) {
@@ -223,4 +305,48 @@ export const EditPost = async (req, res) => {
 
     const deletedPost = await PostModel.findByIdAndDelete(postId);
   } catch (error) {}
+};
+
+export const getPostDetails = async (req, res) => {
+  try {
+    const { postId } = req.params;
+    console.log("h1");
+    const post = await PostModel.findById(postId)
+      .populate("user", "username email profile_image") // adjust fields
+      .populate({
+        path: "comments",
+        populate: {
+          path: "user",
+          select: "username profile_image", // adjust fields
+        },
+        options: { sort: { createdAt: -1 } },
+      })
+      .populate({
+        path: "likes",
+        populate: {
+          path: "user",
+          select: "username profile_image", // adjust fields
+        },
+      });
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      post,
+      totalComments: post.comments.length,
+      totalLikes: post.likes.length,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
 };
