@@ -34,9 +34,9 @@ const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? process.env.DEV_
 console.log(ALLOWED_ORIGIN)
 app.use(cors({
   origin: ALLOWED_ORIGIN,
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
   credentials: true,
-  optionsSuccessStatus: 200,
+ 
 }));
 
 
@@ -60,8 +60,7 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === "development" ? process.env.DEV_ORIGIN : "https://skysocial-frontend-8jqa.vercel.app",
-    allowedHeaders: ["Content-Type", "Authorization"],
+    origin: ALLOWED_ORIGIN,
     methods: ["GET", "POST"],
     credentials: true,
   },
