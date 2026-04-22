@@ -13,8 +13,10 @@ const signToken = (id) => {
 
 const getCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  // secure: process.env.NODE_ENV === "production",
+  // sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  secure:true,
+  sameSite:"none",
   maxAge:
     Number(process.env.JWT_COOKIE_EXPIRES_IN || 90) *
     24 *
