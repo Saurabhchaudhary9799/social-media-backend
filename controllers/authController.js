@@ -13,8 +13,8 @@ const signToken = (id) => {
 
 const getCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  secure: true,
+  sameSite: "none",
   domain: ".vercel.app", 
   path: "/",
   maxAge:
@@ -247,8 +247,8 @@ export const updatePassword = async (req,res) => {
 export const logout = async (req, res) => {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: true,
+    sameSite:"none",
   });
 
   return res.status(200).json({
