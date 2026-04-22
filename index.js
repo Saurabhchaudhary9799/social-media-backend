@@ -207,15 +207,15 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("box-clicked", data); // Broadcast to all other users
   });
 
-  socket.on("send-message", ({ senderId, receiverId, message }) => {
+  socket.on("send-message", ({ sender, receiver, message }) => {
     console.log("send message");
   
-    const receiverSocketId = activePeople.get(receiverId);
+    const receiverSocketId = activePeople.get(receiver);
   
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("receive-message", {
-        senderId,
-        receiverId,
+        sender,
+        receiver,
         message,
         createdAt: new Date(),
       });
