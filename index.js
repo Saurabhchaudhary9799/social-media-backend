@@ -30,7 +30,7 @@ app.use(
 app.use(express.json());
 
 
-const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? process.env.DEV_ORIGIN : "https://skysocial-frontend-8jqa.vercel.app";
+const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? process.env.DEV_ORIGIN : process.env.PROD_ORIGIN;
 console.log(ALLOWED_ORIGIN)
 app.use(cors({
   origin: ALLOWED_ORIGIN,
@@ -45,7 +45,8 @@ if (process.env.NODE_ENV === "development") {
 }
 
 app.get('/', (req, res) => {
-  res.send('Hello World, from express');
+  res.send( `hello ${process.env.NODE_ENV} environment} ${ALLOWED_ORIGIN}` );
+
 })
 
 // Routes
