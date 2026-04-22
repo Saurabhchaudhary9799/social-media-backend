@@ -30,7 +30,7 @@ app.use(
 app.use(express.json());
 
 
-const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://sky-social.vercel.app";
+const ALLOWED_ORIGIN = process.env.NODE_ENV === "development" ? process.env.DEV_ORIGIN : "https://skysocial-frontend-8jqa.vercel.app";
 console.log(ALLOWED_ORIGIN)
 app.use(cors({
   origin: ALLOWED_ORIGIN,
@@ -59,7 +59,7 @@ const server = http.createServer(app);
 let users = {};
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: process.env.NODE_ENV === "development" ? process.env.DEV_ORIGIN : "https://skysocial-frontend-8jqa.vercel.app",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST"],
     credentials: true,
