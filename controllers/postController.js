@@ -8,41 +8,20 @@ export const createPost = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // ✅ Validate image FIRST (important)
-    if (!req.files?.image) {
+    // ✅ image must come as URL now
+    if (!req.body.image) {
       return res.status(400).json({
         status: "failed",
         message: "Image is required",
       });
     }
 
-    const image = req.files.image;
+    const tagsArray = req.body.tags || [];
 
-    // ✅ Clean tags (handle string OR array safely)
-    let tagsArray = req.body.tags || [];
-
-    // ✅ Upload image
-    const uploadResult = await cloudinary.uploader.upload(image.tempFilePath, {
-      public_id: `post-${userId}-${Date.now()}`,
-      folder: "posts",
-      transformation: [
-        { width: 800, crop: "limit" },
-        { fetch_format: "auto", quality: "auto" },
-      ],
-    });
-
-    if (!uploadResult?.secure_url) {
-      return res.status(400).json({
-        status: "failed",
-        message: "Image upload failed",
-      });
-    }
-
-    // ✅ Create post
     const newPost = await PostModel.create({
       bio: req.body.bio,
       user: userId,
-      image: uploadResult.secure_url, // 🔥 now required
+      image: req.body.image, // ✅ already uploaded
       tags: tagsArray,
     });
 
@@ -57,7 +36,6 @@ export const createPost = async (req, res) => {
     });
   }
 };
-
 export const getAllPosts = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10; // Default limit is 5

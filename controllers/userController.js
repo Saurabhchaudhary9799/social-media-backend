@@ -52,66 +52,24 @@ export const getUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const updateData = {};
-    const uploadPromises = [];
 
-    if (req.body.name) {
-      updateData.name = req.body.name;
-    }
-    if (req.body.username) {
-      updateData.username = req.body.username;
-    }
+    if (req.body.name) updateData.name = req.body.name;
+    if (req.body.username) updateData.username = req.body.username;
+    if (req.body.bio) updateData.bio = req.body.bio;
 
-    // ✅ Bio
-    if (req.body.bio) {
-      updateData.bio = req.body.bio;
+    // ✅ images come directly as URL
+    if (req.body.profile_image) {
+      updateData.profile_image = req.body.profile_image;
     }
 
-    // ✅ Profile image upload (parallel)
-    if (req.files?.profile_image) {
-      const profileImage = req.files.profile_image;
-
-      const profilePromise = cloudinary.uploader
-        .upload(profileImage.tempFilePath, {
-          public_id: `user-profile-${Date.now()}`,
-          transformation: [
-            { width: 500, height: 500, crop: "auto", gravity: "auto" },
-            { fetch_format: "auto", quality: "auto" },
-          ],
-        })
-        .then((res) => {
-          updateData.profile_image = res.secure_url;
-        });
-
-      uploadPromises.push(profilePromise);
+    if (req.body.cover_image) {
+      updateData.cover_image = req.body.cover_image;
     }
 
-    // ✅ Cover image upload (parallel)
-    if (req.files?.cover_image) {
-      const coverImage = req.files.cover_image;
-
-      const coverPromise = cloudinary.uploader
-        .upload(coverImage.tempFilePath, {
-          public_id: `user-cover-${Date.now()}`,
-          transformation: [
-            { width: 800, height: 300, crop: "auto", gravity: "auto" },
-            { fetch_format: "auto", quality: "auto" },
-          ],
-        })
-        .then((res) => {
-          updateData.cover_image = res.secure_url;
-        });
-
-      uploadPromises.push(coverPromise);
-    }
-
-    // ✅ Run uploads in parallel
-    await Promise.all(uploadPromises);
-
-    // ✅ Update DB
     const updatedUser = await UserModel.findByIdAndUpdate(
       req.user._id,
       updateData,
-      { new: true, runValidators: true },
+      { new: true, runValidators: true }
     ).select("-password");
 
     if (!updatedUser) {
@@ -123,16 +81,16 @@ export const updateUser = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "User updated successfully",
       data: updatedUser,
     });
   } catch (error) {
     return res.status(500).json({
       status: "failed",
-      message: error,
+      message: error.message,
     });
   }
 };
+
 export const getUserByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
