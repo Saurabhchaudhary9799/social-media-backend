@@ -1,5 +1,5 @@
 import express from "express"
-import  {login, logout, protect, signup, updatePassword}  from "../controllers/authController.js"
+import  {login, logout, protect, refreshToken, signup, updatePassword}  from "../controllers/authController.js"
 import {    getActivePeople, getAllChatsOfGroup, getCommunityMembers, getFollowersByUserId, getFollowingsByUserId, getPostsByUserId, getSavedPost, getSavedPostsByUserId, getUser, getUserByUserId, listPeople, listSuggestedPeople, searchUser, sendMessageInGroup, updateLocation, updateUser } from "../controllers/userController.js"
 import followRoutes from "./followRoutes.js"; 
 import messageRoutes from "./messageRoutes.js"; 
@@ -20,6 +20,7 @@ router.route('/me').get((getUser)).patch((updateUser))
 router.route("/updatePassword").patch(updatePassword)
 router.route("/suggested-people").get((listSuggestedPeople))
 router.route("/search-user").get(searchUser)
+router.route("/refresh-token").post(refreshToken)
 router.route("/save").get(getSavedPost)
 router.route("/listPeople").get(listPeople)
 router.route("/updateLocation").post(updateLocation)
