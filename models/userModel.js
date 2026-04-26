@@ -61,6 +61,8 @@ export const userSchema = new Schema(
         default: null,
       },
     },
+    resetPasswordToken:String,
+    resetPasswordExpires:Date,
   },
   {
     toJSON: { virtuals: true },
